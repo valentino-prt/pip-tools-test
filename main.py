@@ -3,7 +3,7 @@ import requests
 import numpy as np
 
 
-def Main():
+def main():
     print("✅ All libraries imported successfully!")
 
     print("🔢 Example array:", np.arange(5))
@@ -13,4 +13,4 @@ def Main():
 
 
 if __name__ == "__main__":
-    Main()
+    main()
