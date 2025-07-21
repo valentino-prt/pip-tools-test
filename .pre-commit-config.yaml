@@ -1,9 +1,16 @@
 repos:
   - repo: local
     hooks:
+      # Run the linter.
       - id: ruff
-        name: Ruff formatter
-        entry: ruff
+        name: Ruff linter
+        entry: ruff check
         language: system
-        types: [python]
-        args: ["--fix", "--line-length=120"]
+        types_or: [ python ]
+        args: [ --fix ]
+      # Run the formatter.
+      - id: ruff-format
+        entry: ruff format
+        language: system
+        name: Ruff formatter
+        types_or: [ python ]
