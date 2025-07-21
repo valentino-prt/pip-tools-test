@@ -1,0 +1,9 @@
+repos:
+  - repo: local
+    hooks:
+      - id: ruff
+        name: Ruff formatter
+        entry: ruff
+        language: system
+        types: [python]
+        args: ["--fix", "--line-length=120"]

@@ -1,0 +1,10 @@
+pandas
+numpy
+requests
+matplotlib
+scikit-learn
+python-dateutil
+openpyxl
+beautifulsoup4
+lxml
+pyyaml
