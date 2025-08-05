@@ -1,0 +1,66 @@
+import asyncio
+from clients.weather_api_client import WeatherApiClient
+from services.weather_service import WeatherService
+
+async def main():
+    cities = ["Paris", "New York", "Tokyo", "Lagos", "São Paulo"]
+    client = WeatherApiClient(base_url="https://api.weather.com/v1", api_key="MY_SECRET_API_KEY")
+    service = WeatherService(client)
+
+    tasks = [service.get_city_summary(city) for city in cities]
+    results = await asyncio.gather(*tasks)
+
+    print("\n🌦️ Weather Dashboard:")
+    for result in results:
+        print(result)
+
+if __name__ == "__main__":
+    asyncio.run(main())
+
+
+from clients.weather_api_client import WeatherApiClient
+from typing import Optional
+
+class WeatherService:
+    def __init__(self, client: WeatherApiClient):
+        self.client = client
+
+    async def get_city_summary(self, city: str) -> Optional[str]:
+        data = await self.client.get_weather(city)
+        if not data:
+            return f"❌ Could not fetch weather for {city}"
+
+        try:
+            temp = data["temperature"]
+            condition = data["condition"]
+            return f"🌍 {city}: {temp}°C, {condition.lower()}"
+        except KeyError:
+            return f"⚠️ Malformed data for {city}"
+
+
+
+
+import httpx
+from typing import Optional
+
+class WeatherApiClient:
+    def __init__(self, base_url: str, api_key: str, timeout: float = 5.0):
+        self.base_url = base_url.rstrip("/")
+        self.api_key = api_key
+        self.timeout = timeout
+
+    async def get_weather(self, city: str) -> Optional[dict]:
+        url = f"{self.base_url}/weather"
+        headers = {"x-api-key": self.api_key}
+        params = {"city": city}
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            try:
+                response = await client.get(url, headers=headers, params=params)
+                response.raise_for_status()
+                return response.json()
+            except httpx.RequestError as exc:
+                print(f"[ERROR] Request error for {city}: {exc}")
+            except httpx.HTTPStatusError as exc:
+                print(f"[ERROR] Bad response for {city}: {exc.response.status_code} - {exc.response.text}")
+        return None
