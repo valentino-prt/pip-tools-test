@@ -83,12 +83,13 @@ class TotoClient:
 
         attempt = 0
 
-        attempt += 1
 
         if not self.session:
             await self.connect()
 
         while True:
+            attempt += 1
+
             ok = await self.session.check_connection()
             if not ok:
                 raise TotoConnectionError(f"Failed to connect to {self.url}")
