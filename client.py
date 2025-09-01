@@ -6,7 +6,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-class DisconnectedError(RuntimeError):
+class TotoConnectionError(ConnectionError):
     """Raised when the session is disconnected."""
 
 
@@ -60,61 +60,65 @@ class TotoClient:
             self.reconnection = 0
 
     async def safe_execute(
-        self,
-        coro_func: Callable[..., Awaitable[Any]],
-        *args,
-        **kwargs,
+            self,
+            coro_func: Callable[..., Awaitable[Any]],
+            *args,
+            **kwargs,
     ):
         """
-        Safely execute a coroutine function of the session.
-        - Uses session.check_connection()
-        - Pops 'timeout' from kwargs (default 60s)
-        - Returns None on timeout or error
+        Safely execute a session coroutine with retry and cooldown.
+        - Verifies connection
+        - Retries with reconnect between attempts
+        - Pops 'timeout', 'retries', 'cooldown' from kwargs
+        - Returns None on final failure
         """
-        if not self.session:
-            await self.connect()
-
-        assert self.session is not None
-
-        ok = await self.session.check_connection()
-        if not ok:
-            raise DisconnectedError("Session not connected")
-
-        timeout = kwargs.pop("timeout", 60)
+        timeout: float = kwargs.pop("timeout", 60)
+        retries: int = kwargs.pop("retries", 0)
+        cooldown: float = kwargs.pop("cooldown", 1.0)
 
         func_name = getattr(coro_func, "__name__", str(coro_func))
         arg_preview = args[0] if args else ""
         if isinstance(arg_preview, str) and len(arg_preview) > 80:
             arg_preview = arg_preview[:77] + "..."
 
-        logger.debug(
-            "safe_execute → %s(%s...) [timeout=%s]",
-            func_name,
-            arg_preview,
-            timeout,
-        )
+        attempt = 0
 
-        op_coro = coro_func(*args, **kwargs)
-        try:
-            result = await asyncio.wait_for(op_coro, timeout=timeout)
-            logger.debug("safe_execute success ← %s", func_name)
-            return result
-        except asyncio.TimeoutError:
-            logger.warning(
-                "safe_execute TIMEOUT after %.1fs on %s(%s...)",
-                timeout,
-                func_name,
-                arg_preview,
+        attempt += 1
+
+        if not self.session:
+            await self.connect()
+
+        while True:
+            ok = await self.session.check_connection()
+            if not ok:
+                raise TotoConnectionError(f"Failed to connect to {self.url}")
+
+            logger.debug(
+                "safe_execute attempt %d → %s(%s...) [timeout=%s]",
+                attempt, func_name, arg_preview, timeout,
             )
-            return None
-        except Exception as e:
-            logger.exception(
-                "safe_execute ERROR on %s(%s...): %s",
-                func_name,
-                arg_preview,
-                e,
-            )
-            return None
+
+            op_coro = coro_func(*args, **kwargs)
+            try:
+                result = await asyncio.wait_for(op_coro, timeout=timeout)
+                logger.debug("safe_execute success ← %s (attempt %d)", func_name, attempt)
+                return result
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "safe_execute TIMEOUT on %s(%s...) after %.1fs (attempt %d/%d)",
+                    func_name, arg_preview, timeout, attempt, retries + 1,
+                )
+            except Exception as e:
+                logger.exception(
+                    "safe_execute ERROR on %s(%s...) (attempt %d/%d): %s",
+                    func_name, arg_preview, attempt, retries + 1, e,
+                )
+
+            if attempt > retries:
+                return None
+
+            logger.info("Retrying %s in %.1fs (after reconnect)...", func_name, cooldown)
+            await asyncio.sleep(cooldown)
 
     async def execute_query(self, sql: str, timeout: Optional[float] = None):
         if not self.session:
