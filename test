@@ -1,0 +1,217 @@
+from __future__ import annotations
+from dataclasses import dataclass
+from datetime import date, timedelta
+from hashlib import sha1
+import json
+import os
+from pathlib import Path
+from typing import Dict, Iterable, List, Mapping, Protocol, Sequence, Tuple
+
+import csv  # sticking to stdlib CSV
+
+
+# ---------- Utilities
+
+def daterange(start: date, end: date) -> List[date]:
+    # inclusive start, inclusive end
+    n = (end - start).days
+    return [start + timedelta(days=i) for i in range(n + 1)]
+
+def hash_params(params: Mapping) -> str:
+    payload = json.dumps(params, sort_keys=True, separators=(",", ":"))
+    return sha1(payload.encode()).hexdigest()[:12]
+
+
+# ---------- Strategy contracts
+
+class Strategy(Protocol):
+    name: str
+    params: Mapping
+
+    @property
+    def outputs(self) -> Sequence[str]:
+        """Return output names produced by this strategy."""
+        ...
+
+    def compute(self, dates: Sequence[date]) -> Dict[str, List[Tuple[date, float]]]:
+        """
+        Compute all outputs for the given dates.
+        Return dict: output_name -> list of (date, value)
+        - Must be pure/idempotent: same input -> same result
+        - One tuple per date (no duplicates)
+        """
+        ...
+
+@dataclass(frozen=True)
+class StrategyKey:
+    name: str
+    params_hash: str
+
+    @classmethod
+    def from_strategy(cls, name: str, params: Mapping):
+        return cls(name=name, params_hash=hash_params(params))
+
+    def as_path(self) -> str:
+        return f"{self.name}__{self.params_hash}"
+
+
+# ---------- Storage
+
+class CSVStore:
+    def __init__(self, root: Path):
+        self.root = root
+
+    def output_path(self, sk: StrategyKey, output: str) -> Path:
+        return self.root / sk.as_path() / f"{output}.csv"
+
+    def meta_path(self, sk: StrategyKey) -> Path:
+        return self.root / sk.as_path() / "meta.json"
+
+    def read_existing_dates(self, path: Path) -> Dict[date, dict]:
+        data = {}
+        if not path.exists():
+            return data
+        with path.open("r", newline="") as f:
+            r = csv.DictReader(f)
+            for row in r:
+                d = date.fromisoformat(row["date"])
+                data[d] = row
+        return data
+
+    def append_rows(self, path: Path, rows: List[Dict[str, str]]) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        write_header = not path.exists()
+        tmp = path.with_suffix(".csv.tmp")
+        with tmp.open("a", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+            if write_header:
+                w.writeheader()
+            for row in rows:
+                w.writerow(row)
+        os.replace(tmp, path)  # atomic
+
+    def upsert_daily_values(
+        self, path: Path, new_rows: List[Tuple[date, float]]
+    ) -> None:
+        # Load existing rows (to drop duplicates by date)
+        existing = self.read_existing_dates(path)
+        # Keep only rows whose date is not already present
+        to_add = []
+        for d, v in sorted(new_rows, key=lambda t: t[0]):
+            if d not in existing:
+                to_add.append({"date": d.isoformat(), "value": f"{v}"})
+        if to_add:
+            self.append_rows(path, to_add)
+
+    def write_meta(self, path: Path, content: Mapping) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        with tmp.open("w") as f:
+            json.dump(content, f, indent=2, sort_keys=True)
+        os.replace(tmp, path)
+
+    def read_meta(self, path: Path) -> Dict:
+        if not path.exists():
+            return {}
+        with path.open() as f:
+            return json.load(f)
+
+
+# ---------- Orchestrator
+
+class StrategyRunner:
+    def __init__(self, store: CSVStore):
+        self.store = store
+
+    def run(
+        self,
+        strategy: Strategy,
+        windows: Sequence[timedelta],
+        end_date: date,
+        schema_version: int = 1,
+    ):
+        """
+        Compute only missing daily rows for the *longest* window, persist once,
+        and rely on slicing for shorter windows (no recompute).
+        """
+        sk = StrategyKey.from_strategy(strategy.name, strategy.params)
+        outputs = list(strategy.outputs)
+        longest = max(windows, key=lambda w: w.days)
+
+        # Determine desired date set for the longest window
+        start_date = end_date - longest
+        desired_dates = set(daterange(start_date, end_date))
+
+        # Figure out which dates are missing per output; union them
+        missing_union: set[date] = set()
+        for out in outputs:
+            p = self.store.output_path(sk, out)
+            existing_dates = set(self.store.read_existing_dates(p).keys())
+            missing = desired_dates - existing_dates
+            missing_union |= missing
+
+        if not missing_union:
+            # Everything up-to-date for the longest window
+            self._write_meta(strategy, sk, schema_version, end_date)
+            return
+
+        # Compute only missing dates once for all outputs
+        dates_to_compute = sorted(missing_union)
+        computed = strategy.compute(dates_to_compute)  # dict: out -> [(date, value)]
+
+        # Persist per output
+        for out in outputs:
+            p = self.store.output_path(sk, out)
+            rows = computed.get(out, [])
+            self.store.upsert_daily_values(p, rows)
+
+        self._write_meta(strategy, sk, schema_version, end_date)
+
+    def _write_meta(self, strategy: Strategy, sk: StrategyKey, schema_version: int, end_date: date):
+        meta_p = self.store.meta_path(sk)
+        meta = self.store.read_meta(meta_p)
+        meta.update(
+            {
+                "schema_version": schema_version,
+                "strategy_name": strategy.name,
+                "params": strategy.params,
+                "params_hash": sk.params_hash,
+                "last_end_date": end_date.isoformat(),
+            }
+        )
+        self.store.write_meta(meta_p, meta)
+
+
+# ---------- Example strategy (toy)
+
+class MyStrategy:
+    name = "my_strategy"
+
+    def __init__(self, **params):
+        self.params = params
+
+    @property
+    def outputs(self) -> Sequence[str]:
+        return ["alpha", "beta"]
+
+    def compute(self, dates: Sequence[date]) -> Dict[str, List[Tuple[date, float]]]:
+        # Example: deterministic fake numbers
+        alpha = []
+        beta = []
+        k = int(self.params.get("k", 1))
+        for d in dates:
+            day_num = (d.toordinal() % 1000)
+            alpha.append((d, (day_num % 17) * k / 10.0))
+            beta.append((d, (day_num % 29) * k / 20.0))
+        return {"alpha": alpha, "beta": beta}
+
+
+# ---------- Usage
+
+if __name__ == "__main__":
+    store = CSVStore(Path("data"))
+    runner = StrategyRunner(store)
+
+    strategy = MyStrategy(k=3)
+    windows = [timedelta(days=14), timedelta(days=30), timedelta(days=365)]
+    runner.run(strategy, windows, end_date=date.today())
