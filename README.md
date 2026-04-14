@@ -1,10 +1,13 @@
-avec un rôle très orienté développement, où je conçois et maintiens des outils qui améliorent la qualité d’exécution et la rentabilité du desk.
+Mon projet professionnel est de devenir trader en environnement global macro.
 
-Je travaille notamment sur l’automatisation des processus front office et sur l’analyse de données pour optimiser la performance des stratégies.
+Je travaille actuellement en trading support, avec un rôle très orienté développement, où je conçois et maintiens des outils qui contribuent directement à améliorer la qualité d’exécution et la rentabilité du desk.
 
-Cette position me donne une forte proximité avec les traders et une bonne compréhension des enjeux de marché.
+Mon travail consiste notamment à automatiser des processus front office et à exploiter les données pour analyser et optimiser la performance des stratégies de trading. Cela m’amène à être en interaction quotidienne avec les traders et à comprendre leurs contraintes, leurs prises de décision et les dynamiques de marché.
 
-Je souhaite maintenant évoluer vers un rôle plus décisionnel en trading, en capitalisant sur ce socle technique et cette exposition directe au desk
+Cette position m’a permis de développer une vision concrète du fonctionnement d’un desk, à la fois sur les aspects techniques et financiers.
+
+Mon objectif est désormais de me rapprocher de la prise de décision en marché, en capitalisant sur cette double compétence, pour évoluer vers un rôle de trader
+
 
 # piptools-demo
 
