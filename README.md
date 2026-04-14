@@ -1,3 +1,11 @@
+avec un rôle très orienté développement, où je conçois et maintiens des outils qui améliorent la qualité d’exécution et la rentabilité du desk.
+
+Je travaille notamment sur l’automatisation des processus front office et sur l’analyse de données pour optimiser la performance des stratégies.
+
+Cette position me donne une forte proximité avec les traders et une bonne compréhension des enjeux de marché.
+
+Je souhaite maintenant évoluer vers un rôle plus décisionnel en trading, en capitalisant sur ce socle technique et cette exposition directe au desk
+
 # piptools-demo
 
 Demo project to test pip-tools with multiple libraries.
