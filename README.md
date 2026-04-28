@@ -1,3 +1,22 @@
+CREATE INDEX idx_pnl_ts
+ON pnl_timeseries (ts DESC);
+
+CREATE INDEX idx_pnl_portfolio_book_type_ts
+ON pnl_timeseries (portfolio, book, pnl_type, ts DESC);
+
+CREATE INDEX idx_pnl_desk_ts
+ON pnl_timeseries (desk, ts DESC);
+
+SELECT create_hypertable('pnl_timeseries', 'ts');
+
+
+ALTER TABLE pnl_timeseries SET (
+    timescaledb.compress,
+    timescaledb.compress_segmentby = 'desk, portfolio, book, pnl_type'
+);
+
+
+
 CREATE TABLE pnl_timeseries (
     ts              timestamptz NOT NULL,
     desk            text        NOT NULL,
