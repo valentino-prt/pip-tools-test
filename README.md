@@ -1,3 +1,27 @@
+CREATE TABLE pnl_timeseries (
+    ts              timestamptz NOT NULL,
+    desk            text        NOT NULL,
+    portfolio       text        NOT NULL,
+    book            text        NOT NULL,
+    underlying      text,
+    product_type    text,
+    currency        text        NOT NULL DEFAULT 'EUR',
+
+    pnl_type        text        NOT NULL,
+    pnl_value       numeric(18,4) NOT NULL,
+
+    source_file     text,
+    inserted_at     timestamptz NOT NULL DEFAULT now(),
+
+    PRIMARY KEY (
+        ts,
+        desk,
+        portfolio,
+        book,
+        pnl_type
+    )
+);
+
 Mon projet professionnel est de devenir trader en environnement global macro.
 
 Je travaille actuellement en trading support, avec un rôle très orienté développement, où je conçois et maintiens des outils qui contribuent directement à améliorer la qualité d’exécution et la rentabilité du desk.
